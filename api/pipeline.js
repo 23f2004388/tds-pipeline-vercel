@@ -36,18 +36,20 @@ async function enrichWithAI(text) {
   // If not set, it uses a fallback analysis so the pipeline still works.
   const key = process.env.OPENAI_API_KEY;
 
+  // ✅ Fallback still satisfies required sentiment set
   if (!key) {
     return {
       analysis:
         `This post describes: "${text.slice(0, 70)}...". ` +
         `It reads like general information rather than strong opinion.`,
-      sentiment: "neutral",
+      sentiment: "objective",
     };
   }
 
+  // ✅ Required sentiment labels
   const prompt =
-    `Analyze this in 2-3 sentences and classify sentiment as positive/negative/neutral. ` +
-    `Return ONLY JSON like {"analysis":"...","sentiment":"positive|negative|neutral"}.\n\nTEXT:\n${text}`;
+    `Analyze this in 2-3 sentences and classify sentiment as enthusiastic/critical/objective. ` +
+    `Return ONLY JSON like {"analysis":"...","sentiment":"enthusiastic|critical|objective"}.\n\nTEXT:\n${text}`;
 
   const r = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
@@ -72,13 +74,13 @@ async function enrichWithAI(text) {
 
   try {
     const obj = JSON.parse(content);
-    let s = (obj.sentiment || "neutral").toLowerCase();
-    if (!["positive", "negative", "neutral"].includes(s)) s = "neutral";
+    let s = (obj.sentiment || "objective").toLowerCase();
+    if (!["enthusiastic", "critical", "objective"].includes(s)) s = "objective";
     return { analysis: obj.analysis || "Analysis unavailable.", sentiment: s };
   } catch {
     return {
       analysis: "Analysis unavailable due to parsing error.",
-      sentiment: "neutral",
+      sentiment: "objective",
     };
   }
 }
@@ -139,7 +141,7 @@ export default async function handler(req, res) {
     const original = `${p.title ?? ""} — ${p.body ?? ""}`.trim();
 
     let analysis = "";
-    let sentiment = "neutral";
+    let sentiment = "objective";
 
     try {
       const enr = await enrichWithAI(original);
@@ -148,7 +150,7 @@ export default async function handler(req, res) {
     } catch (e) {
       errors.push({ stage: "ai", postId: p.id, error: String(e.message || e) });
       analysis = "AI enrichment failed.";
-      sentiment = "neutral";
+      sentiment = "objective";
     }
 
     const record = {
@@ -163,13 +165,19 @@ export default async function handler(req, res) {
 
     const stored = storeRecord(record);
     if (!stored)
-      errors.push({ stage: "storage", postId: p.id, error: "Storage write failed" });
+      errors.push({
+        stage: "storage",
+        postId: p.id,
+        error: "Storage write failed",
+      });
 
     items.push({ original, analysis, sentiment, stored, timestamp });
   }
 
   // 4) Notification
-  console.log(`[NOTIFICATION] Pipeline completed -> Sent to: ${email || "no-email"}`);
+  console.log(
+    `[NOTIFICATION] Pipeline completed -> Sent to: ${email || "no-email"}`
+  );
   console.log(
     `[REQUIRED] Indicate notification sent to: 23f2004388@ds.study.iitm.ac.in`
   );
