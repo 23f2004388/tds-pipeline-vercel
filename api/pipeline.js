@@ -41,7 +41,7 @@ async function enrichWithAI(text) {
       analysis:
         `This post describes: "${text.slice(0, 70)}...". ` +
         `It reads like general information rather than strong opinion.`,
-      sentiment: "neutral"
+      sentiment: "neutral",
     };
   }
 
@@ -52,17 +52,17 @@ async function enrichWithAI(text) {
   const r = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
-      "Authorization": `Bearer ${key}`,
-      "Content-Type": "application/json"
+      Authorization: `Bearer ${key}`,
+      "Content-Type": "application/json",
     },
     body: JSON.stringify({
       model: "gpt-4o-mini",
       messages: [
         { role: "system", content: "Return strict JSON only." },
-        { role: "user", content: prompt }
+        { role: "user", content: prompt },
       ],
-      temperature: 0.2
-    })
+      temperature: 0.2,
+    }),
   });
 
   if (!r.ok) throw new Error(`LLM error: HTTP ${r.status}`);
@@ -76,11 +76,24 @@ async function enrichWithAI(text) {
     if (!["positive", "negative", "neutral"].includes(s)) s = "neutral";
     return { analysis: obj.analysis || "Analysis unavailable.", sentiment: s };
   } catch {
-    return { analysis: "Analysis unavailable due to parsing error.", sentiment: "neutral" };
+    return {
+      analysis: "Analysis unavailable due to parsing error.",
+      sentiment: "neutral",
+    };
   }
 }
 
 export default async function handler(req, res) {
+  // ✅ CORS for Hoppscotch / browser calls
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+
+  // ✅ Preflight request (Hoppscotch will send this)
+  if (req.method === "OPTIONS") {
+    return res.status(200).end();
+  }
+
   if (req.method !== "POST") {
     return res.status(405).json({ error: "POST only" });
   }
@@ -93,7 +106,8 @@ export default async function handler(req, res) {
   let source = "JSONPlaceholder Posts";
 
   try {
-    const body = typeof req.body === "string" ? JSON.parse(req.body) : (req.body || {});
+    const body =
+      typeof req.body === "string" ? JSON.parse(req.body) : req.body || {};
     email = body.email || "";
     source = body.source || source;
   } catch {
@@ -108,12 +122,14 @@ export default async function handler(req, res) {
     errors.push({ stage: "fetch", error: String(e.message || e) });
 
     // Notification even if fetch fails
-    console.log(`[NOTIFICATION] Pipeline completed (fetch failed) -> ${email || "no-email"}`);
+    console.log(
+      `[NOTIFICATION] Pipeline completed (fetch failed) -> ${email || "no-email"}`
+    );
     return res.status(200).json({
       items: [],
       notificationSent: true,
       processedAt,
-      errors
+      errors,
     });
   }
 
@@ -142,23 +158,26 @@ export default async function handler(req, res) {
       original,
       analysis,
       sentiment,
-      timestamp
+      timestamp,
     };
 
     const stored = storeRecord(record);
-    if (!stored) errors.push({ stage: "storage", postId: p.id, error: "Storage write failed" });
+    if (!stored)
+      errors.push({ stage: "storage", postId: p.id, error: "Storage write failed" });
 
     items.push({ original, analysis, sentiment, stored, timestamp });
   }
 
   // 4) Notification
   console.log(`[NOTIFICATION] Pipeline completed -> Sent to: ${email || "no-email"}`);
-  console.log(`[REQUIRED] Indicate notification sent to: 23f2004388@ds.study.iitm.ac.in`);
+  console.log(
+    `[REQUIRED] Indicate notification sent to: 23f2004388@ds.study.iitm.ac.in`
+  );
 
   return res.status(200).json({
     items,
     notificationSent: true,
     processedAt,
-    errors
+    errors,
   });
 }
